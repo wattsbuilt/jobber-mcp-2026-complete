@@ -1,291 +1,175 @@
-/**
- * Timesheets Tools for Jobber MCP Server
- */
+/\*\*
 
-import { z } from 'zod';
-import { JobberClient } from '../clients/jobber.js';
-import type { TimeEntry } from '../types/jobber.js';
+- Timesheets Tools for Jobber MCP Server
+- Updated for Jobber GraphQL API 2025 schema (timeSheetEntries, finalDuration, EncodedId) \*/
 
-export const timesheetsTools = {
-  list_time_entries: {
-    description: 'List time entries with optional filtering',
-    inputSchema: z.object({
-      userId: z.string().optional(),
-      visitId: z.string().optional(),
-      startDate: z.string().optional().describe('ISO 8601 date'),
-      endDate: z.string().optional().describe('ISO 8601 date'),
-      limit: z.number().default(50),
-      cursor: z.string().optional(),
-    }),
-    execute: async (client: JobberClient, args: any) => {
-      const filters: string[] = [];
-      if (args.userId) filters.push(`userId: "${args.userId}"`);
-      if (args.visitId) filters.push(`visitId: "${args.visitId}"`);
-      if (args.startDate) filters.push(`startDate: "${args.startDate}"`);
-      if (args.endDate) filters.push(`endDate: "${args.endDate}"`);
+import { z } from 'zod'; import { JobberClient } from '../clients/jobber.js'; import type { TimeEntry } from '../types/jobber.js';
 
-      const filterClause = filters.length > 0 ? `, filter: { ${filters.join(', ')} }` : '';
-      const afterClause = args.cursor ? `, after: "${args.cursor}"` : '';
+export const timesheetsTools = { list_time_entries: { description: 'List time entries with optional filtering', inputSchema: z.object({ userId: z.string().optional(), visitId: z.string().optional(), startDate: z.string().optional().describe('ISO 8601 date (used for client-side filtering)'), endDate: z.string().optional().describe('ISO 8601 date (used for client-side filtering)'), limit: z.number().default(50), cursor: z.string().optional(), }), execute: async (client: JobberClient, args: any) =&gt; { const filters: string\[\] = \[\]; if (args.userId) filters.push(`userId: "${args.userId}"`); if (args.visitId) filters.push(`visitId: "${args.visitId}"`);
 
-      const query = `
-        query ListTimeEntries {
-          timeEntries(first: ${args.limit}${afterClause}${filterClause}) {
-            edges {
-              node {
-                id
-                startAt
-                endAt
-                duration
-                notes
-                user {
-                  id
-                  firstName
-                  lastName
-                }
-                visit {
-                  id
-                  title
-                }
-              }
-              cursor
-            }
-            pageInfo {
-              hasNextPage
-              endCursor
-            }
-          }
-        }
-      `;
+```
+  const filterClause = filters.length > 0 ? `, filter: { ${filters.join(', ')} }` : '';
+  const afterClause = args.cursor ? `, after: "${args.cursor}"` : '';
 
-      const data = await client.query(query);
-      return {
-        timeEntries: data.timeEntries.edges.map((e: any) => e.node),
-        pageInfo: data.timeEntries.pageInfo,
-      };
-    },
-  },
-
-  get_time_entry: {
-    description: 'Get a specific time entry by ID',
-    inputSchema: z.object({
-      timeEntryId: z.string(),
-    }),
-    execute: async (client: JobberClient, args: any) => {
-      const query = `
-        query GetTimeEntry($id: ID!) {
-          timeEntry(id: $id) {
+  const query = `
+    query ListTimeEntries {
+      timeSheetEntries(first: ${args.limit}${afterClause}${filterClause}) {
+        edges {
+          node {
             id
             startAt
             endAt
-            duration
-            notes
+            finalDuration
+            note
             user {
               id
-              firstName
-              lastName
+              name {
+                full
+              }
             }
             visit {
               id
               title
             }
           }
+          cursor
         }
-      `;
-
-      const data = await client.query(query, { id: args.timeEntryId });
-      return { timeEntry: data.timeEntry };
-    },
-  },
-
-  create_time_entry: {
-    description: 'Create a new time entry',
-    inputSchema: z.object({
-      userId: z.string(),
-      visitId: z.string().optional(),
-      startAt: z.string().describe('ISO 8601 datetime'),
-      endAt: z.string().optional().describe('ISO 8601 datetime'),
-      notes: z.string().optional(),
-    }),
-    execute: async (client: JobberClient, args: any) => {
-      const mutation = `
-        mutation CreateTimeEntry($input: TimeEntryInput!) {
-          timeEntryCreate(input: $input) {
-            timeEntry {
-              id
-              startAt
-              endAt
-              duration
-              notes
-            }
-            userErrors {
-              message
-            }
-          }
+        pageInfo {
+          hasNextPage
+          endCursor
         }
-      `;
-
-      const input = {
-        userId: args.userId,
-        visitId: args.visitId,
-        startAt: args.startAt,
-        endAt: args.endAt,
-        notes: args.notes,
-      };
-
-      const data = await client.mutate(mutation, { input });
-
-      if (data.timeEntryCreate.userErrors?.length > 0) {
-        throw new Error(`Time entry creation failed: ${data.timeEntryCreate.userErrors.map((e: any) => e.message).join(', ')}`);
       }
+    }
+  `;
 
-      return { timeEntry: data.timeEntryCreate.timeEntry };
-    },
-  },
+  const data = await client.query(query);
+  let entries = data.timeSheetEntries.edges.map((e: any) => e.node);
 
-  update_time_entry: {
-    description: 'Update an existing time entry',
-    inputSchema: z.object({
-      timeEntryId: z.string(),
-      startAt: z.string().optional().describe('ISO 8601 datetime'),
-      endAt: z.string().optional().describe('ISO 8601 datetime'),
-      notes: z.string().optional(),
-    }),
-    execute: async (client: JobberClient, args: any) => {
-      const mutation = `
-        mutation UpdateTimeEntry($id: ID!, $input: TimeEntryUpdateInput!) {
-          timeEntryUpdate(id: $id, input: $input) {
-            timeEntry {
-              id
-              startAt
-              endAt
-              duration
-              notes
-            }
-            userErrors {
-              message
-            }
-          }
-        }
-      `;
+  // Client-side date filtering (server-side date filters removed in Jobber API 2023-08-18)
+  if (args.startDate) {
+    entries = entries.filter((e: any) => e.startAt >= args.startDate);
+  }
+  if (args.endDate) {
+    entries = entries.filter((e: any) => e.startAt <= args.endDate + 'T23:59:59Z');
+  }
 
-      const input: any = {};
-      if (args.startAt) input.startAt = args.startAt;
-      if (args.endAt) input.endAt = args.endAt;
-      if (args.notes) input.notes = args.notes;
+  return {
+    timeEntries: entries,
+    pageInfo: data.timeSheetEntries.pageInfo,
+  };
+},
+```
 
-      const data = await client.mutate(mutation, { id: args.timeEntryId, input });
+},
 
-      if (data.timeEntryUpdate.userErrors?.length > 0) {
-        throw new Error(`Time entry update failed: ${data.timeEntryUpdate.userErrors.map((e: any) => e.message).join(', ')}`);
-      }
+get_time_entry: { description: 'Get a specific time entry by ID', inputSchema: z.object({ timeEntryId: z.string(), }), execute: async (client: JobberClient, args: any) =&gt; { const query = `query GetTimeEntry($id: EncodedId!) { timeSheetEntry(id: $id) { id startAt endAt finalDuration note user { id name { full } } visit { id title } } } `;
 
-      return { timeEntry: data.timeEntryUpdate.timeEntry };
-    },
-  },
+```
+  const data = await client.query(query, { id: args.timeEntryId });
+  return { timeEntry: data.timeSheetEntry };
+},
+```
 
-  delete_time_entry: {
-    description: 'Delete a time entry',
-    inputSchema: z.object({
-      timeEntryId: z.string(),
-    }),
-    execute: async (client: JobberClient, args: any) => {
-      const mutation = `
-        mutation DeleteTimeEntry($id: ID!) {
-          timeEntryDelete(id: $id) {
-            deletedTimeEntryId
-            userErrors {
-              message
-            }
-          }
-        }
-      `;
+},
 
-      const data = await client.mutate(mutation, { id: args.timeEntryId });
+create_time_entry: { description: 'Create a new time entry', inputSchema: z.object({ userId: z.string(), visitId: z.string().optional(), startAt: z.string().describe('ISO 8601 datetime'), endAt: z.string().optional().describe('ISO 8601 datetime'), note: z.string().optional(), }), execute: async (client: JobberClient, args: any) =&gt; { const mutation = `mutation CreateTimeEntry($input: TimeSheetEntryCreateInput!) { timeSheetEntryCreate(input: $input) { timeSheetEntry { id startAt endAt finalDuration note } userErrors { message } } } `;
 
-      if (data.timeEntryDelete.userErrors?.length > 0) {
-        throw new Error(`Time entry deletion failed: ${data.timeEntryDelete.userErrors.map((e: any) => e.message).join(', ')}`);
-      }
+```
+  const input: any = {
+    userId: args.userId,
+    startAt: args.startAt,
+  };
+  if (args.visitId) input.visitId = args.visitId;
+  if (args.endAt) input.endAt = args.endAt;
+  if (args.note) input.note = args.note;
 
-      return { deletedTimeEntryId: data.timeEntryDelete.deletedTimeEntryId };
-    },
-  },
+  const data = await client.mutate(mutation, { input });
 
-  stop_time_entry: {
-    description: 'Stop a running time entry (set end time to now)',
-    inputSchema: z.object({
-      timeEntryId: z.string(),
-    }),
-    execute: async (client: JobberClient, args: any) => {
-      const mutation = `
-        mutation StopTimeEntry($id: ID!) {
-          timeEntryUpdate(id: $id, input: { endAt: "${new Date().toISOString()}" }) {
-            timeEntry {
-              id
-              startAt
-              endAt
-              duration
-            }
-            userErrors {
-              message
-            }
-          }
-        }
-      `;
+  if (data.timeSheetEntryCreate.userErrors?.length > 0) {
+    throw new Error(`Time entry creation failed: ${data.timeSheetEntryCreate.userErrors.map((e: any) => e.message).join(', ')}`);
+  }
 
-      const data = await client.mutate(mutation, { id: args.timeEntryId });
+  return { timeEntry: data.timeSheetEntryCreate.timeSheetEntry };
+},
+```
 
-      if (data.timeEntryUpdate.userErrors?.length > 0) {
-        throw new Error(`Failed to stop time entry: ${data.timeEntryUpdate.userErrors.map((e: any) => e.message).join(', ')}`);
-      }
+},
 
-      return { timeEntry: data.timeEntryUpdate.timeEntry };
-    },
-  },
+update_time_entry: { description: 'Update an existing time entry', inputSchema: z.object({ timeEntryId: z.string(), startAt: z.string().optional().describe('ISO 8601 datetime'), endAt: z.string().optional().describe('ISO 8601 datetime'), note: z.string().optional(), }), execute: async (client: JobberClient, args: any) =&gt; { const mutation = `mutation UpdateTimeEntry($id: EncodedId!, $input: TimeSheetEntryUpdateInput!) { timeSheetEntryUpdate(id: $id, input: $input) { timeSheetEntry { id startAt endAt finalDuration note } userErrors { message } } } `;
 
-  get_user_timesheet: {
-    description: 'Get timesheet summary for a user over a date range',
-    inputSchema: z.object({
-      userId: z.string(),
-      startDate: z.string().describe('ISO 8601 date'),
-      endDate: z.string().describe('ISO 8601 date'),
-    }),
-    execute: async (client: JobberClient, args: any) => {
-      const query = `
-        query GetUserTimesheet($userId: String!, $startDate: String!, $endDate: String!) {
-          timeEntries(filter: { userId: $userId, startDate: $startDate, endDate: $endDate }) {
-            edges {
-              node {
-                id
-                startAt
-                endAt
-                duration
-                notes
-                visit {
-                  id
-                  title
-                }
-              }
-            }
-          }
-        }
-      `;
+```
+  const input: any = {};
+  if (args.startAt) input.startAt = args.startAt;
+  if (args.endAt) input.endAt = args.endAt;
+  if (args.note) input.note = args.note;
 
-      const data = await client.query(query, {
-        userId: args.userId,
-        startDate: args.startDate,
-        endDate: args.endDate,
-      });
+  const data = await client.mutate(mutation, { id: args.timeEntryId, input });
 
-      const entries = data.timeEntries.edges.map((e: any) => e.node);
-      const totalDuration = entries.reduce((sum: number, entry: any) => sum + (entry.duration || 0), 0);
+  if (data.timeSheetEntryUpdate.userErrors?.length > 0) {
+    throw new Error(`Time entry update failed: ${data.timeSheetEntryUpdate.userErrors.map((e: any) => e.message).join(', ')}`);
+  }
 
-      return {
-        userId: args.userId,
-        startDate: args.startDate,
-        endDate: args.endDate,
-        entries,
-        totalHours: totalDuration / 3600, // Convert seconds to hours
-      };
-    },
-  },
-};
+  return { timeEntry: data.timeSheetEntryUpdate.timeSheetEntry };
+},
+```
+
+},
+
+delete_time_entry: { description: 'Delete a time entry', inputSchema: z.object({ timeEntryId: z.string(), }), execute: async (client: JobberClient, args: any) =&gt; { const mutation = `mutation DeleteTimeEntry($id: EncodedId!) { timeSheetEntryDelete(id: $id) { deletedTimeSheetEntryId userErrors { message } } } `;
+
+```
+  const data = await client.mutate(mutation, { id: args.timeEntryId });
+
+  if (data.timeSheetEntryDelete.userErrors?.length > 0) {
+    throw new Error(`Time entry deletion failed: ${data.timeSheetEntryDelete.userErrors.map((e: any) => e.message).join(', ')}`);
+  }
+
+  return { deletedTimeEntryId: data.timeSheetEntryDelete.deletedTimeSheetEntryId };
+},
+```
+
+},
+
+stop_time_entry: { description: 'Stop a running time entry (set end time to now)', inputSchema: z.object({ timeEntryId: z.string(), }), execute: async (client: JobberClient, args: any) =&gt; { const endAt = new Date().toISOString(); const mutation = `mutation StopTimeEntry($id: EncodedId!, $input: TimeSheetEntryUpdateInput!) { timeSheetEntryUpdate(id: $id, input: $input) { timeSheetEntry { id startAt endAt finalDuration } userErrors { message } } } `;
+
+```
+  const data = await client.mutate(mutation, { id: args.timeEntryId, input: { endAt } });
+
+  if (data.timeSheetEntryUpdate.userErrors?.length > 0) {
+    throw new Error(`Failed to stop time entry: ${data.timeSheetEntryUpdate.userErrors.map((e: any) => e.message).join(', ')}`);
+  }
+
+  return { timeEntry: data.timeSheetEntryUpdate.timeSheetEntry };
+},
+```
+
+},
+
+get_user_timesheet: { description: 'Get timesheet summary for a user over a date range', inputSchema: z.object({ userId: z.string(), startDate: z.string().describe('ISO 8601 date'), endDate: z.string().describe('ISO 8601 date'), }), execute: async (client: JobberClient, args: any) =&gt; { const query = `query GetUserTimesheet { timeSheetEntries(first: 200, filter: { userId: "${args.userId}" }) { edges { node { id startAt endAt finalDuration note visit { id title } } } } } `;
+
+```
+  const data = await client.query(query);
+
+  let entries = data.timeSheetEntries.edges.map((e: any) => e.node);
+
+  // Client-side date filtering (server-side date range filters removed in Jobber API 2023-08-18)
+  if (args.startDate) {
+    entries = entries.filter((e: any) => e.startAt >= args.startDate);
+  }
+  if (args.endDate) {
+    entries = entries.filter((e: any) => e.startAt <= args.endDate + 'T23:59:59Z');
+  }
+
+  const totalDuration = entries.reduce((sum: number, entry: any) => sum + (entry.finalDuration || 0), 0);
+
+  return {
+    userId: args.userId,
+    startDate: args.startDate,
+    endDate: args.endDate,
+    entries,
+    totalHours: totalDuration / 3600,
+  };
+},
+```
+
+}, };
