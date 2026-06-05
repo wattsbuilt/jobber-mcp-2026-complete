@@ -60,13 +60,7 @@ export const jobsTools = {
       jobId: z.string().describe('The job ID'),
     }),
     execute: async (client: JobberClient, args: any) => {
-      const query = `
-        query GetJob($id: ID!) {
-          job(id: $id) {
-            ${JobberClient.jobFields}
-          }
-        }
-      `;
+      const query = `query GetJob($id: EncodedId!) { job(id: $id) { ${JobberClient.jobFields} timesheetEntries { nodes { id startAt endAt finalDuration ticking note user { id firstName lastName } } } } } `;
 
       const data = await client.query(query, { id: args.jobId });
       return { job: data.job };
@@ -247,7 +241,7 @@ export const jobsTools = {
     }),
     execute: async (client: JobberClient, args: any) => {
       const query = `
-        query GetJobLineItems($id: ID!) {
+        query GetJobLineItems($id: EncodedId!)
           job(id: $id) {
             lineItems {
               ${JobberClient.lineItemFields}
