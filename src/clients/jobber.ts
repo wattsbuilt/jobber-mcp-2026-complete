@@ -22,7 +22,7 @@ export class JobberClient {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.apiToken}`,
-        'X-JOBBER-GRAPHQL-VERSION': '2024-01-11',
+        'X-JOBBER-GRAPHQL-VERSION': '2025-04-16',
       },
       body: JSON.stringify({ query, variables }),
     });
