@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc && chmod +x dist/index.js",
+    "start": "node dist/main-http.js",
     "dev": "tsc --watch",
     "prepare": "npm run build",
     "prepublishOnly": "npm run build"
