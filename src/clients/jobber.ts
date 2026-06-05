@@ -127,80 +127,109 @@ export class JobberClient {
    * Standard job fields fragment
    */
   static get jobFields(): string {
+
     return `
+
       id
+
       jobNumber
+
       title
-      description
-      status
+
+      instructions
+
+      jobStatus
+
       createdAt
+
       updatedAt
-      closedAt
+
+      total
+
       client {
-        ${this.clientFields}
+
+        id
+
+        firstName
+
+        lastName
+
+        companyName
+
       }
-      total {
-        amount
-        currency
-      }
+
     `;
+
   }
 
   /**
    * Standard quote fields fragment
    */
   static get quoteFields(): string {
+
     return `
+
       id
+
       quoteNumber
+
       title
-      status
+
+      quoteStatus
+
       createdAt
-      sentAt
-      approvedAt
-      expiresAt
+
       client {
-        ${this.clientFields}
+
+        id
+
+        firstName
+
+        lastName
+
+        companyName
+
       }
-      total {
-        amount
-        currency
-      }
+
     `;
+
   }
 
   /**
    * Standard invoice fields fragment
    */
   static get invoiceFields(): string {
+
     return `
+
       id
+
       invoiceNumber
+
       subject
-      status
+
+      invoiceStatus
+
       createdAt
-      sentAt
+
       dueDate
+
+      total
+
       client {
-        ${this.clientFields}
+
+        id
+
+        firstName
+
+        lastName
+
+        companyName
+
       }
-      subtotal {
-        amount
-        currency
-      }
-      total {
-        amount
-        currency
-      }
-      amountPaid {
-        amount
-        currency
-      }
-      amountDue {
-        amount
-        currency
-      }
+
     `;
+
   }
 
   /**
